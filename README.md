@@ -1,6 +1,6 @@
 # Discord FACEIT Team Balancer Bot
 
-A Discord bot that automatically balances CS:GO teams for LAN parties based on live FACEIT ELO ratings. Perfect for organizing fair 5v5 matches with your friends!
+A Discord bot that automatically balances CS2 teams for LAN parties based on live FACEIT ELO ratings. Perfect for organizing fair 5v5 matches with your friends!
 
 ## Features
 
@@ -110,7 +110,7 @@ A Discord bot that automatically balances CS:GO teams for LAN parties based on l
 
 The bot uses a greedy algorithm to balance teams:
 
-1. Fetches current CS:GO/CS2 ELO for all 10 participants from FACEIT API
+1. Fetches current CS2/CS2 ELO for all 10 participants from FACEIT API
 2. Sorts players by ELO in descending order
 3. Assigns each player to the team with the lower current total ELO
 4. This minimizes the absolute ELO difference between teams
@@ -131,11 +131,11 @@ The result is two teams with similar total ELO, ensuring fair and competitive ma
 
 **Can't link FACEIT account:**
 - Verify your FACEIT username is correct (case-sensitive)
-- Make sure you have played CS:GO or CS2 on FACEIT (the bot needs stats to fetch)
+- Make sure you have played CS2 or CS2 on FACEIT (the bot needs stats to fetch)
 
 **ELO fetch fails:**
 - Ensure your FACEIT API key is valid and correctly added to `.env`
-- Check that the player has CS:GO/CS2 games on their FACEIT profile
+- Check that the player has CS2/CS2 games on their FACEIT profile
 
 **Bot crashes on startup:**
 - Verify all environment variables are set in `.env`

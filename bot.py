@@ -67,7 +67,7 @@ class BalanceSessionView(discord.ui.View):
     async def update_embed(self):
         """Update the session embed with current participants."""
         embed = discord.Embed(
-            title="🎮 CS:GO Team Balancing Session",
+            title="🎮 CS2 Team Balancing Session",
             description=f"Click **Join Session** to participate!\nWe need exactly **{Config.REQUIRED_PLAYERS}** players.",
             color=discord.Color.orange()
         )
@@ -206,7 +206,7 @@ class BalanceSessionView(discord.ui.View):
         if failed_players:
             error_embed = discord.Embed(
                 title="❌ Error Fetching ELOs",
-                description=f"Failed to get ELO for some players. They may not have CS:GO stats on FACEIT.",
+                description=f"Failed to get ELO for some players. They may not have CS2 stats on FACEIT.",
                 color=discord.Color.red()
             )
             failed_mentions = "\n".join([f"• <@{uid}>" for uid in failed_players])
@@ -411,12 +411,12 @@ async def profile(interaction: discord.Interaction, faceit_input: str):
         )
         return
     
-    # Check if player has CS:GO stats
+    # Check if player has CS2 stats
     stats = faceit.get_player_stats(faceit_username)
-    if not stats or not stats.get('has_csgo'):
+    if not stats or not stats.get('has_cs2'):
         await interaction.followup.send(
-            f"⚠️ FACEIT account '{faceit_username}' found, but no CS:GO/CS2 stats detected. "
-            "Make sure you have played CS:GO or CS2 on FACEIT before linking.",
+            f"⚠️ FACEIT account '{faceit_username}' found, but no CS2 stats detected. "
+            "Make sure you have played CS2 on FACEIT before linking.",
             ephemeral=True
         )
         return
@@ -466,9 +466,9 @@ async def myelo(interaction: discord.Interaction):
     
     stats = faceit.get_player_stats(faceit_username)
     
-    if not stats or not stats.get('has_csgo'):
+    if not stats or not stats.get('has_cs2'):
         await interaction.followup.send(
-            "❌ Could not fetch your CS:GO stats. Make sure you have CS:GO/CS2 games on FACEIT.",
+            "❌ Could not fetch your CS2 stats. Make sure you have CS2 games on FACEIT.",
             ephemeral=True
         )
         return
@@ -491,7 +491,7 @@ async def start_balance_session(interaction: discord.Interaction):
     view = BalanceSessionView(interaction)
     
     embed = discord.Embed(
-        title="🎮 CS:GO Team Balancing Session",
+        title="🎮 CS2 Team Balancing Session",
         description=f"Click **Join Session** to participate!\nWe need exactly **{Config.REQUIRED_PLAYERS}** players.",
         color=discord.Color.orange()
     )
@@ -528,7 +528,7 @@ async def help_command(interaction: discord.Interaction):
     """Show help information."""
     embed = discord.Embed(
         title="🤖 FACEIT Team Balancer Bot",
-        description="Balance CS:GO teams based on FACEIT ELO for fair matches!",
+        description="Balance CS2 teams based on FACEIT ELO for fair matches!",
         color=discord.Color.blue()
     )
     

@@ -56,15 +56,15 @@ class FaceitAPI:
         if not player_data:
             return None
         
-        # Check if player has CS:GO game data
+        # Check if player has CS2 game data
         games = player_data.get('games', {})
-        csgo_data = games.get('cs2') or games.get('csgo')  # Try CS2 first, fallback to CSGO
+        cs2_data = games.get('cs2') or games.get('csgo')  # Try CS2 first, fallback to CSGO
         
-        if not csgo_data:
+        if not cs2_data:
             return None
         
         # Get ELO from faceit_elo field
-        elo = csgo_data.get('faceit_elo', 0)
+        elo = cs2_data.get('faceit_elo', 0)
         return int(elo) if elo else None
     
     def verify_player_exists(self, nickname: str) -> bool:
@@ -93,21 +93,21 @@ class FaceitAPI:
             return None
         
         games = player_data.get('games', {})
-        csgo_data = games.get('cs2') or games.get('csgo')
+        cs2_data = games.get('cs2') or games.get('csgo')
         
-        if not csgo_data:
+        if not cs2_data:
             return {
                 'nickname': nickname,
                 'elo': None,
                 'level': None,
-                'has_csgo': False
+                'has_cs2': False
             }
         
         return {
             'nickname': nickname,
-            'elo': int(csgo_data.get('faceit_elo', 0)),
-            'level': int(csgo_data.get('skill_level', 0)),
-            'has_csgo': True,
+            'elo': int(cs2_data.get('faceit_elo', 0)),
+            'level': int(cs2_data.get('skill_level', 0)),
+            'has_cs2': True,
             'player_id': player_data.get('player_id'),
             'avatar': player_data.get('avatar', '')
         }
