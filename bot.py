@@ -486,8 +486,7 @@ async def myelo(interaction: discord.Interaction):
     await interaction.followup.send(embed=embed, ephemeral=True)
 
 
-@bot.tree.command(name="balance", description="Start a team balancing session")
-async def balance(interaction: discord.Interaction):
+async def start_balance_session(interaction: discord.Interaction):
     """Start team balancing session."""
     view = BalanceSessionView(interaction)
     
@@ -504,6 +503,24 @@ async def balance(interaction: discord.Interaction):
     
     await interaction.response.send_message(embed=embed, view=view)
     view.message = await interaction.original_response()
+
+
+@bot.tree.command(name="balance", description="Start a team balancing session")
+async def balance(interaction: discord.Interaction):
+    """Start team balancing session."""
+    await start_balance_session(interaction)
+
+
+@bot.tree.command(name="start", description="Start a team balancing session")
+async def start(interaction: discord.Interaction):
+    """Start team balancing session."""
+    await start_balance_session(interaction)
+
+
+@bot.tree.command(name="mix", description="Mix and balance teams")
+async def mix(interaction: discord.Interaction):
+    """Mix and balance teams."""
+    await start_balance_session(interaction)
 
 
 @bot.tree.command(name="help", description="Show bot commands and usage")
@@ -531,7 +548,7 @@ async def help_command(interaction: discord.Interaction):
         inline=False
     )
     embed.add_field(
-        name="/balance",
+        name="/balance, /start, /mix",
         value="Start a team balancing session (needs 10 players)",
         inline=False
     )

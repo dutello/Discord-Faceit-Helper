@@ -79,8 +79,10 @@ A Discord bot that automatically balances CS:GO teams for LAN parties based on l
 3. **Start a balancing session**
    ```
    /balance
+   /start
+   /mix
    ```
-   This creates an interactive session where players can join.
+   Any of these commands creates an interactive session where players can join.
 
 4. **Join the session**
    
@@ -99,7 +101,7 @@ A Discord bot that automatically balances CS:GO teams for LAN parties based on l
 - `/profile <faceit_username_or_url>` - Link your Discord account to your FACEIT profile (username or URL)
 - `/unlink` - Unlink your FACEIT account
 - `/myelo` - Check your current FACEIT ELO
-- `/balance` - Start a team balancing session (requires 10 players)
+- `/balance`, `/start`, `/mix` - Start a team balancing session (requires 10 players)
 - `/help` - Show all available commands
 
 ## How It Works
