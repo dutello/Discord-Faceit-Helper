@@ -1,5 +1,6 @@
 """Discord bot for FACEIT team balancing."""
 import discord
+import time
 from discord.ext import commands
 from discord import app_commands
 from typing import List, Dict, Optional
