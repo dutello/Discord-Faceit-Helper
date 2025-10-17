@@ -2,6 +2,7 @@
 import discord
 import time
 import logging
+import json
 from discord.ext import commands
 from discord import app_commands
 from typing import List, Dict, Optional
@@ -22,6 +23,47 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+# Active sessions storage
+ACTIVE_SESSIONS_FILE = "active_sessions.json"
+active_sessions = {}
+
+def load_active_sessions():
+    """Load active sessions from file."""
+    global active_sessions
+    try:
+        with open(ACTIVE_SESSIONS_FILE, 'r') as f:
+            active_sessions = json.load(f)
+        logger.info(f"Loaded {len(active_sessions)} active sessions")
+    except FileNotFoundError:
+        active_sessions = {}
+    except Exception as e:
+        logger.error(f"Error loading active sessions: {e}")
+        active_sessions = {}
+
+def save_active_sessions():
+    """Save active sessions to file."""
+    try:
+        with open(ACTIVE_SESSIONS_FILE, 'w') as f:
+            json.dump(active_sessions, f, indent=2)
+    except Exception as e:
+        logger.error(f"Error saving active sessions: {e}")
+
+def cleanup_expired_sessions():
+    """Remove expired sessions (older than 30 minutes)."""
+    current_time = time.time()
+    expired_sessions = []
+    
+    for session_id, session_data in active_sessions.items():
+        if current_time - session_data.get('created_at', 0) > 1800:  # 30 minutes
+            expired_sessions.append(session_id)
+    
+    for session_id in expired_sessions:
+        del active_sessions[session_id]
+        logger.info(f"Cleaned up expired session: {session_id}")
+    
+    if expired_sessions:
+        save_active_sessions()
 import re
 
 # Validate configuration
@@ -70,13 +112,38 @@ def extract_faceit_username(input_text: str) -> str:
 class BalanceSessionView(discord.ui.View):
     """Interactive view for team balancing session."""
     
-    def __init__(self, ctx):
+    def __init__(self, ctx, session_id: str = None):
         super().__init__(timeout=1800)  # 30 minute timeout
         self.ctx = ctx
         self.participants = set()
         self.message = None
         self.teams_created = False
         self.session_start_time = time.time()
+        self.session_id = session_id or f"{ctx.guild.id}_{ctx.channel.id}_{int(time.time())}"
+        
+        # Load session data if session_id provided (restart scenario)
+        if session_id and session_id in active_sessions:
+            session_data = active_sessions[session_id]
+            self.participants = set(session_data.get('participants', []))
+            self.teams_created = session_data.get('teams_created', False)
+            self.session_start_time = session_data.get('created_at', time.time())
+            logger.info(f"Restored session {session_id} with {len(self.participants)} participants")
+        
+        # Save session to active sessions
+        self.save_session()
+    
+    def save_session(self):
+        """Save current session state to active sessions."""
+        active_sessions[self.session_id] = {
+            'participants': list(self.participants),
+            'teams_created': self.teams_created,
+            'team_a': getattr(self, 'team_a', []),
+            'team_b': getattr(self, 'team_b', []),
+            'created_at': self.session_start_time,
+            'guild_id': self.ctx.guild.id,
+            'channel_id': self.ctx.channel.id
+        }
+        save_active_sessions()
         
     async def update_embed(self):
         """Update the session embed with current participants."""
@@ -161,6 +228,7 @@ class BalanceSessionView(discord.ui.View):
             
             self.participants.add(user_id)
             logger.info(f"User {interaction.user.name} ({interaction.user.id}) joined the balancing session")
+            self.save_session()  # Save session state
             if not interaction.response.is_done():
                 await interaction.response.defer()
             await self.update_embed()
@@ -200,6 +268,7 @@ class BalanceSessionView(discord.ui.View):
             
             self.participants.remove(user_id)
             logger.info(f"User {interaction.user.name} ({interaction.user.id}) left the balancing session")
+            self.save_session()  # Save session state
             if not interaction.response.is_done():
                 await interaction.response.defer()
             await self.update_embed()
@@ -540,6 +609,10 @@ async def on_ready():
     print(f'{bot.user} has connected to Discord!')
     print(f'Bot is in {len(bot.guilds)} guild(s)')
     
+    # Load active sessions and cleanup expired ones
+    load_active_sessions()
+    cleanup_expired_sessions()
+    
     # Sync commands
     try:
         synced = await bot.tree.sync()
@@ -681,6 +754,59 @@ async def mix(interaction: discord.Interaction):
     await start_balance_session(interaction)
 
 
+@bot.tree.command(name="recover", description="Recover active sessions after bot restart")
+async def recover(interaction: discord.Interaction):
+    """Recover active sessions after bot restart."""
+    if not interaction.response.is_done():
+        await interaction.response.defer(ephemeral=True)
+    
+    guild_id = str(interaction.guild.id)
+    channel_id = str(interaction.channel.id)
+    
+    # Find sessions for this guild/channel
+    recovered_sessions = []
+    for session_id, session_data in active_sessions.items():
+        if (session_data.get('guild_id') == interaction.guild.id and 
+            session_data.get('channel_id') == interaction.channel.id):
+            recovered_sessions.append((session_id, session_data))
+    
+    if not recovered_sessions:
+        await interaction.followup.send(
+            "ℹ️ No active sessions found for this channel.",
+            ephemeral=True
+        )
+        return
+    
+    # Create recovery message for the most recent session
+    latest_session_id, session_data = max(recovered_sessions, key=lambda x: x[1].get('created_at', 0))
+    
+    embed = discord.Embed(
+        title="🔄 Session Recovered",
+        description="This session was restored after a bot restart. The buttons below are now functional!",
+        color=discord.Color.green()
+    )
+    
+    participants = session_data.get('participants', [])
+    embed.add_field(
+        name=f"Participants ({len(participants)}/{Config.REQUIRED_PLAYERS})",
+        value="\n".join([f"<@{p}>" for p in participants]) if participants else "*No participants*",
+        inline=False
+    )
+    
+    if session_data.get('teams_created'):
+        embed.add_field(
+            name="Status",
+            value="✅ Teams have been created",
+            inline=False
+        )
+    
+    # Create new view with restored session
+    view = BalanceSessionView(interaction, latest_session_id)
+    view.message = await interaction.followup.send(embed=embed, view=view)
+    
+    logger.info(f"Recovered session {latest_session_id} for user {interaction.user.name}")
+
+
 @bot.tree.command(name="help", description="Show bot commands and usage")
 async def help_command(interaction: discord.Interaction):
     """Show help information."""
@@ -708,6 +834,11 @@ async def help_command(interaction: discord.Interaction):
     embed.add_field(
         name="/balance, /start, /mix",
         value="Start a team balancing session (needs 10 players)",
+        inline=False
+    )
+    embed.add_field(
+        name="/recover",
+        value="Recover active sessions after bot restart",
         inline=False
     )
     
