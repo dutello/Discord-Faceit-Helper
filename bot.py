@@ -1,6 +1,7 @@
 """Discord bot for FACEIT team balancing."""
 import discord
 import time
+import logging
 from discord.ext import commands
 from discord import app_commands
 from typing import List, Dict, Optional
@@ -10,6 +11,17 @@ from config import Config
 from database import Database
 from faceit_api import FaceitAPI
 from team_balancer import TeamBalancer
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('bot.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 import re
 
 # Validate configuration
@@ -148,6 +160,7 @@ class BalanceSessionView(discord.ui.View):
                 return
             
             self.participants.add(user_id)
+            logger.info(f"User {interaction.user.name} ({interaction.user.id}) joined the balancing session")
             if not interaction.response.is_done():
                 await interaction.response.defer()
             await self.update_embed()
@@ -186,6 +199,7 @@ class BalanceSessionView(discord.ui.View):
                 return
             
             self.participants.remove(user_id)
+            logger.info(f"User {interaction.user.name} ({interaction.user.id}) left the balancing session")
             if not interaction.response.is_done():
                 await interaction.response.defer()
             await self.update_embed()
@@ -229,6 +243,7 @@ class BalanceSessionView(discord.ui.View):
                     )
                 return
             
+            logger.info(f"User {interaction.user.name} ({interaction.user.id}) initiated team balancing with {len(self.participants)} participants")
             if not interaction.response.is_done():
                 await interaction.response.defer()
             await self.create_balanced_teams()
@@ -309,6 +324,7 @@ class BalanceSessionView(discord.ui.View):
     
     async def create_balanced_teams(self):
         """Fetch ELOs and create balanced teams."""
+        logger.info(f"Starting team balancing process for {len(self.participants)} participants")
         status_embed = discord.Embed(
             title="⏳ Fetching FACEIT ELOs...",
             description="Please wait while I get everyone's current ELO.",
@@ -562,6 +578,7 @@ async def profile(interaction: discord.Interaction, faceit_input: str):
     
     # Link the account
     db.link_user(str(interaction.user.id), faceit_username)
+    logger.info(f"User {interaction.user.name} ({interaction.user.id}) linked FACEIT account: {faceit_username} (ELO: {stats['elo']}, Level: {stats['level']})")
     
     embed = discord.Embed(
         title="✅ Account Linked!",
@@ -578,6 +595,7 @@ async def profile(interaction: discord.Interaction, faceit_input: str):
 async def unlink(interaction: discord.Interaction):
     """Unlink FACEIT account."""
     if db.unlink_user(str(interaction.user.id)):
+        logger.info(f"User {interaction.user.name} ({interaction.user.id}) unlinked their FACEIT account")
         await interaction.response.send_message(
             "✅ Your FACEIT account has been unlinked.",
             ephemeral=True
@@ -627,6 +645,7 @@ async def myelo(interaction: discord.Interaction):
 
 async def start_balance_session(interaction: discord.Interaction):
     """Start team balancing session."""
+    logger.info(f"User {interaction.user.name} ({interaction.user.id}) started a new balancing session")
     view = BalanceSessionView(interaction)
     
     embed = discord.Embed(
