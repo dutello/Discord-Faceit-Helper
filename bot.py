@@ -63,14 +63,27 @@ class BalanceSessionView(discord.ui.View):
         self.participants = set()
         self.message = None
         self.teams_created = False
+        self.session_start_time = time.time()
         
     async def update_embed(self):
         """Update the session embed with current participants."""
-        embed = discord.Embed(
-            title="🎮 CS2 Team Balancing Session",
-            description=f"Click **Join Session** to participate!\nWe need exactly **{Config.REQUIRED_PLAYERS}** players.",
-            color=discord.Color.orange()
-        )
+        # Check if session is getting close to expiring (10+ minutes old)
+        import time
+        current_time = time.time()
+        session_age = current_time - self.session_start_time
+        
+        if session_age > 600:  # 10 minutes
+            embed = discord.Embed(
+                title="🎮 CS2 Team Balancing Session",
+                description=f"⚠️ **Session is getting old** - interactions may expire soon!\n\nClick **Join Session** to participate!\nWe need exactly **{Config.REQUIRED_PLAYERS}** players.",
+                color=discord.Color.red()
+            )
+        else:
+            embed = discord.Embed(
+                title="🎮 CS2 Team Balancing Session",
+                description=f"Click **Join Session** to participate!\nWe need exactly **{Config.REQUIRED_PLAYERS}** players.",
+                color=discord.Color.orange()
+            )
         
         if self.participants:
             participant_list = "\n".join([f"• <@{uid}>" for uid in self.participants])
@@ -97,6 +110,15 @@ class BalanceSessionView(discord.ui.View):
     async def join_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Handle join button click."""
         try:
+            # Check if interaction is still valid
+            if not self.is_interaction_valid(interaction):
+                if not interaction.response.is_done():
+                    await interaction.response.send_message(
+                        "⏰ **Session Expired**\n\nThis balancing session has been running for too long and is no longer interactive. Please start a new session with `/balance`, `/start`, or `/mix`.",
+                        ephemeral=True
+                    )
+                return
+            
             user_id = str(interaction.user.id)
             
             # Check if user is linked to FACEIT
@@ -132,7 +154,10 @@ class BalanceSessionView(discord.ui.View):
             print(f"Error in join button: {e}")
             try:
                 if not interaction.response.is_done():
-                    await interaction.response.send_message("❌ Session expired. Please start a new session.", ephemeral=True)
+                    await interaction.response.send_message(
+                        "⏰ **Session Expired**\n\nThis balancing session has been running for too long and is no longer interactive. Please start a new session with `/balance`, `/start`, or `/mix`.",
+                        ephemeral=True
+                    )
             except:
                 pass
     
@@ -140,6 +165,15 @@ class BalanceSessionView(discord.ui.View):
     async def leave_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Handle leave button click."""
         try:
+            # Check if interaction is still valid
+            if not self.is_interaction_valid(interaction):
+                if not interaction.response.is_done():
+                    await interaction.response.send_message(
+                        "⏰ **Session Expired**\n\nThis balancing session has been running for too long and is no longer interactive. Please start a new session with `/balance`, `/start`, or `/mix`.",
+                        ephemeral=True
+                    )
+                return
+            
             user_id = str(interaction.user.id)
             
             if user_id not in self.participants:
@@ -158,7 +192,10 @@ class BalanceSessionView(discord.ui.View):
             print(f"Error in leave button: {e}")
             try:
                 if not interaction.response.is_done():
-                    await interaction.response.send_message("❌ Session expired. Please start a new session.", ephemeral=True)
+                    await interaction.response.send_message(
+                        "⏰ **Session Expired**\n\nThis balancing session has been running for too long and is no longer interactive. Please start a new session with `/balance`, `/start`, or `/mix`.",
+                        ephemeral=True
+                    )
             except:
                 pass
     
@@ -166,6 +203,15 @@ class BalanceSessionView(discord.ui.View):
     async def balance_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Handle balance button click."""
         try:
+            # Check if interaction is still valid
+            if not self.is_interaction_valid(interaction):
+                if not interaction.response.is_done():
+                    await interaction.response.send_message(
+                        "⏰ **Session Expired**\n\nThis balancing session has been running for too long and is no longer interactive. Please start a new session with `/balance`, `/start`, or `/mix`.",
+                        ephemeral=True
+                    )
+                return
+            
             if len(self.participants) != Config.REQUIRED_PLAYERS:
                 if not interaction.response.is_done():
                     await interaction.response.send_message(
@@ -189,7 +235,10 @@ class BalanceSessionView(discord.ui.View):
             print(f"Error in balance button: {e}")
             try:
                 if not interaction.response.is_done():
-                    await interaction.response.send_message("❌ Session expired. Please start a new session.", ephemeral=True)
+                    await interaction.response.send_message(
+                        "⏰ **Session Expired**\n\nThis balancing session has been running for too long and is no longer interactive. Please start a new session with `/balance`, `/start`, or `/mix`.",
+                        ephemeral=True
+                    )
             except:
                 pass
     
@@ -197,6 +246,15 @@ class BalanceSessionView(discord.ui.View):
     async def cancel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Handle cancel button click."""
         try:
+            # Check if interaction is still valid
+            if not self.is_interaction_valid(interaction):
+                if not interaction.response.is_done():
+                    await interaction.response.send_message(
+                        "⏰ **Session Expired**\n\nThis balancing session has been running for too long and is no longer interactive. Please start a new session with `/balance`, `/start`, or `/mix`.",
+                        ephemeral=True
+                    )
+                return
+            
             if not interaction.response.is_done():
                 await interaction.response.send_message("Session cancelled!", ephemeral=True)
             else:
@@ -207,7 +265,10 @@ class BalanceSessionView(discord.ui.View):
             print(f"Error in cancel button: {e}")
             # Try to send a followup message
             try:
-                await interaction.followup.send("Session cancelled!", ephemeral=True)
+                await interaction.followup.send(
+                    "⏰ **Session Expired**\n\nThis balancing session has been running for too long and is no longer interactive. Please start a new session with `/balance`, `/start`, or `/mix`.",
+                    ephemeral=True
+                )
             except:
                 pass
         
@@ -230,6 +291,20 @@ class BalanceSessionView(discord.ui.View):
                 await self.message.edit(embed=embed, view=None)
         except:
             pass
+    
+    def is_interaction_valid(self, interaction: discord.Interaction) -> bool:
+        """Check if interaction is still valid (not expired)."""
+        try:
+            # Check if the interaction was created more than 15 minutes ago
+            import time
+            current_time = time.time()
+            interaction_time = interaction.created_at.timestamp()
+            time_diff = current_time - interaction_time
+            
+            # Discord interactions expire after 15 minutes
+            return time_diff < 900  # 15 minutes = 900 seconds
+        except:
+            return False
     
     async def create_balanced_teams(self):
         """Fetch ELOs and create balanced teams."""
