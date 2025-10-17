@@ -66,15 +66,16 @@ def cleanup_expired_sessions():
         save_active_sessions()
 
 async def replace_old_sessions():
-    """Replace old sessions with new functional ones on bot startup."""
-    logger.info("Checking for old sessions to replace...")
+    """Restore functionality to existing session messages on bot startup."""
+    logger.info("Checking for old sessions to restore...")
     
     for session_id, session_data in active_sessions.items():
         try:
             guild_id = session_data.get('guild_id')
             channel_id = session_data.get('channel_id')
+            message_id = session_data.get('message_id')
             
-            if not guild_id or not channel_id:
+            if not guild_id or not channel_id or not message_id:
                 continue
                 
             guild = bot.get_guild(guild_id)
@@ -87,28 +88,19 @@ async def replace_old_sessions():
                 logger.warning(f"Channel {channel_id} not found in guild {guild_id}, skipping session {session_id}")
                 continue
             
-            # Create a new session to replace the old one
+            # Try to find the existing message
+            try:
+                message = await channel.fetch_message(message_id)
+            except discord.NotFound:
+                logger.warning(f"Message {message_id} not found in channel {channel.name}, skipping session {session_id}")
+                # Remove session if message doesn't exist
+                del active_sessions[session_id]
+                save_active_sessions()
+                continue
+            
+            # Restore the session data
             participants = session_data.get('participants', [])
             teams_created = session_data.get('teams_created', False)
-            
-            embed = discord.Embed(
-                title="🔄 Session Restored",
-                description="This session was restored after a bot restart. The buttons below are now functional!",
-                color=discord.Color.green()
-            )
-            
-            embed.add_field(
-                name=f"Participants ({len(participants)}/{Config.REQUIRED_PLAYERS})",
-                value="\n".join([f"<@{p}>" for p in participants]) if participants else "*No participants*",
-                inline=False
-            )
-            
-            if teams_created:
-                embed.add_field(
-                    name="Status",
-                    value="✅ Teams have been created",
-                    inline=False
-                )
             
             # Create new view with restored session
             new_session_id = f"{guild_id}_{channel_id}_{int(time.time())}"
@@ -125,20 +117,40 @@ async def replace_old_sessions():
             new_view.teams_created = teams_created
             new_view.team_a = session_data.get('team_a', [])
             new_view.team_b = session_data.get('team_b', [])
+            new_view.message = message  # Link to existing message
             new_view.save_session()
             
-            # Send the new session message
-            message = await channel.send(embed=embed, view=new_view)
-            new_view.message = message
+            # Update the existing message with new working buttons
+            embed = discord.Embed(
+                title="🎮 CS2 Team Balancing Session",
+                description=f"Click **Join Session** to participate!\nWe need exactly **{Config.REQUIRED_PLAYERS}** players.",
+                color=discord.Color.orange()
+            )
             
-            # Remove the old session
+            embed.add_field(
+                name=f"Participants ({len(participants)}/{Config.REQUIRED_PLAYERS})",
+                value="\n".join([f"<@{p}>" for p in participants]) if participants else "*No one has joined yet...*",
+                inline=False
+            )
+            
+            if teams_created:
+                embed.add_field(
+                    name="Status",
+                    value="✅ Teams have been created",
+                    inline=False
+                )
+            
+            # Edit the existing message with new working view
+            await message.edit(embed=embed, view=new_view)
+            
+            # Remove the old session and save the new one
             del active_sessions[session_id]
             save_active_sessions()
             
-            logger.info(f"Replaced old session {session_id} with new session {new_session_id} in channel {channel.name}")
+            logger.info(f"Restored functionality to existing message in channel {channel.name}")
             
         except Exception as e:
-            logger.error(f"Error replacing session {session_id}: {e}")
+            logger.error(f"Error restoring session {session_id}: {e}")
             # Remove problematic session
             if session_id in active_sessions:
                 del active_sessions[session_id]
@@ -221,7 +233,8 @@ class BalanceSessionView(discord.ui.View):
             'team_b': getattr(self, 'team_b', []),
             'created_at': self.session_start_time,
             'guild_id': self.ctx.guild.id,
-            'channel_id': self.ctx.channel.id
+            'channel_id': self.ctx.channel.id,
+            'message_id': self.message.id if self.message else None
         }
         save_active_sessions()
     
@@ -241,7 +254,65 @@ class BalanceSessionView(discord.ui.View):
                         recent_session = session_data
             
             if recent_session:
-                # Create a new session with the same data
+                # Try to find and edit the existing message
+                message_id = recent_session.get('message_id')
+                if message_id:
+                    try:
+                        message = await interaction.channel.fetch_message(message_id)
+                        
+                        # Create new view with restored session
+                        new_session_id = f"{guild_id}_{channel_id}_{int(time.time())}"
+                        
+                        # Create a mock context for the view
+                        class MockContext:
+                            def __init__(self, guild, channel):
+                                self.guild = guild
+                                self.channel = channel
+                        
+                        mock_ctx = MockContext(interaction.guild, interaction.channel)
+                        new_view = BalanceSessionView(mock_ctx, new_session_id)
+                        new_view.participants = set(recent_session.get('participants', []))
+                        new_view.teams_created = recent_session.get('teams_created', False)
+                        new_view.team_a = recent_session.get('team_a', [])
+                        new_view.team_b = recent_session.get('team_b', [])
+                        new_view.message = message
+                        new_view.save_session()
+                        
+                        # Update the existing message
+                        embed = discord.Embed(
+                            title="🎮 CS2 Team Balancing Session",
+                            description=f"Click **Join Session** to participate!\nWe need exactly **{Config.REQUIRED_PLAYERS}** players.",
+                            color=discord.Color.orange()
+                        )
+                        
+                        participants = recent_session.get('participants', [])
+                        embed.add_field(
+                            name=f"Participants ({len(participants)}/{Config.REQUIRED_PLAYERS})",
+                            value="\n".join([f"<@{p}>" for p in participants]) if participants else "*No one has joined yet...*",
+                            inline=False
+                        )
+                        
+                        if recent_session.get('teams_created'):
+                            embed.add_field(
+                                name="Status",
+                                value="✅ Teams have been created",
+                                inline=False
+                            )
+                        
+                        await message.edit(embed=embed, view=new_view)
+                        
+                        if not interaction.response.is_done():
+                            await interaction.response.send_message("✅ Session restored! The buttons above are now functional.", ephemeral=True)
+                        else:
+                            await interaction.followup.send("✅ Session restored! The buttons above are now functional.", ephemeral=True)
+                        
+                        logger.info(f"Auto-recovered session for user {interaction.user.name}")
+                        return
+                        
+                    except discord.NotFound:
+                        logger.warning(f"Original message {message_id} not found, creating new session")
+                
+                # Fallback: create new session if original message not found
                 embed = discord.Embed(
                     title="🔄 Session Recovered",
                     description="This session was restored after a bot restart. The buttons below are now functional!",
