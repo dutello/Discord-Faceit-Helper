@@ -482,6 +482,12 @@ class BalanceSessionView(discord.ui.View):
                 await self.auto_recover_session(interaction)
                 return
             
+            # Remove this session from active sessions
+            if hasattr(self, 'session_id') and self.session_id in active_sessions:
+                del active_sessions[self.session_id]
+                save_active_sessions()
+                logger.info(f"Session {self.session_id} cancelled and removed from storage")
+            
             if not interaction.response.is_done():
                 await interaction.response.send_message("Session cancelled!", ephemeral=True)
             else:
@@ -509,6 +515,12 @@ class BalanceSessionView(discord.ui.View):
     async def on_timeout(self):
         """Handle view timeout."""
         try:
+            # Remove this session from active sessions when it times out
+            if hasattr(self, 'session_id') and self.session_id in active_sessions:
+                del active_sessions[self.session_id]
+                save_active_sessions()
+                logger.info(f"Session {self.session_id} timed out and removed from storage")
+            
             if self.message:
                 embed = discord.Embed(
                     title="⏰ Session Expired",
@@ -1034,6 +1046,29 @@ async def recover(interaction: discord.Interaction):
         save_active_sessions()
     
     logger.info(f"Recovered session {latest_session_id} for user {interaction.user.name}")
+
+
+@bot.tree.command(name="clear_sessions", description="Clear all active sessions (admin only)")
+async def clear_sessions(interaction: discord.Interaction):
+    """Clear all active sessions."""
+    # Check if user has admin permissions
+    if not interaction.user.guild_permissions.administrator:
+        await interaction.response.send_message(
+            "❌ You need administrator permissions to use this command.",
+            ephemeral=True
+        )
+        return
+    
+    global active_sessions
+    session_count = len(active_sessions)
+    active_sessions.clear()
+    save_active_sessions()
+    
+    await interaction.response.send_message(
+        f"✅ Cleared {session_count} active sessions.",
+        ephemeral=True
+    )
+    logger.info(f"User {interaction.user.name} cleared all {session_count} active sessions")
 
 
 @bot.tree.command(name="help", description="Show bot commands and usage")
