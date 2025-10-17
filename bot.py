@@ -64,6 +64,86 @@ def cleanup_expired_sessions():
     
     if expired_sessions:
         save_active_sessions()
+
+async def replace_old_sessions():
+    """Replace old sessions with new functional ones on bot startup."""
+    logger.info("Checking for old sessions to replace...")
+    
+    for session_id, session_data in active_sessions.items():
+        try:
+            guild_id = session_data.get('guild_id')
+            channel_id = session_data.get('channel_id')
+            
+            if not guild_id or not channel_id:
+                continue
+                
+            guild = bot.get_guild(guild_id)
+            if not guild:
+                logger.warning(f"Guild {guild_id} not found, skipping session {session_id}")
+                continue
+                
+            channel = guild.get_channel(channel_id)
+            if not channel:
+                logger.warning(f"Channel {channel_id} not found in guild {guild_id}, skipping session {session_id}")
+                continue
+            
+            # Create a new session to replace the old one
+            participants = session_data.get('participants', [])
+            teams_created = session_data.get('teams_created', False)
+            
+            embed = discord.Embed(
+                title="🔄 Session Restored",
+                description="This session was restored after a bot restart. The buttons below are now functional!",
+                color=discord.Color.green()
+            )
+            
+            embed.add_field(
+                name=f"Participants ({len(participants)}/{Config.REQUIRED_PLAYERS})",
+                value="\n".join([f"<@{p}>" for p in participants]) if participants else "*No participants*",
+                inline=False
+            )
+            
+            if teams_created:
+                embed.add_field(
+                    name="Status",
+                    value="✅ Teams have been created",
+                    inline=False
+                )
+            
+            # Create new view with restored session
+            new_session_id = f"{guild_id}_{channel_id}_{int(time.time())}"
+            
+            # Create a mock context for the view
+            class MockContext:
+                def __init__(self, guild, channel):
+                    self.guild = guild
+                    self.channel = channel
+            
+            mock_ctx = MockContext(guild, channel)
+            new_view = BalanceSessionView(mock_ctx, new_session_id)
+            new_view.participants = set(participants)
+            new_view.teams_created = teams_created
+            new_view.team_a = session_data.get('team_a', [])
+            new_view.team_b = session_data.get('team_b', [])
+            new_view.save_session()
+            
+            # Send the new session message
+            message = await channel.send(embed=embed, view=new_view)
+            new_view.message = message
+            
+            # Remove the old session
+            del active_sessions[session_id]
+            save_active_sessions()
+            
+            logger.info(f"Replaced old session {session_id} with new session {new_session_id} in channel {channel.name}")
+            
+        except Exception as e:
+            logger.error(f"Error replacing session {session_id}: {e}")
+            # Remove problematic session
+            if session_id in active_sessions:
+                del active_sessions[session_id]
+                save_active_sessions()
+
 import re
 
 # Validate configuration
@@ -675,6 +755,9 @@ async def on_ready():
     load_active_sessions()
     cleanup_expired_sessions()
     
+    # Proactively replace old sessions with new ones
+    await replace_old_sessions()
+    
     # Sync commands
     try:
         synced = await bot.tree.sync()
@@ -889,9 +972,6 @@ async def recover(interaction: discord.Interaction):
     if not interaction.response.is_done():
         await interaction.response.defer(ephemeral=True)
     
-    guild_id = str(interaction.guild.id)
-    channel_id = str(interaction.channel.id)
-    
     # Find sessions for this guild/channel
     recovered_sessions = []
     for session_id, session_data in active_sessions.items():
@@ -930,8 +1010,28 @@ async def recover(interaction: discord.Interaction):
         )
     
     # Create new view with restored session
-    view = BalanceSessionView(interaction, latest_session_id)
+    new_session_id = f"{interaction.guild.id}_{interaction.channel.id}_{int(time.time())}"
+    
+    # Create a mock context for the view
+    class MockContext:
+        def __init__(self, guild, channel):
+            self.guild = guild
+            self.channel = channel
+    
+    mock_ctx = MockContext(interaction.guild, interaction.channel)
+    view = BalanceSessionView(mock_ctx, new_session_id)
+    view.participants = set(participants)
+    view.teams_created = session_data.get('teams_created', False)
+    view.team_a = session_data.get('team_a', [])
+    view.team_b = session_data.get('team_b', [])
+    view.save_session()
+    
     view.message = await interaction.followup.send(embed=embed, view=view)
+    
+    # Remove the old session
+    if latest_session_id in active_sessions:
+        del active_sessions[latest_session_id]
+        save_active_sessions()
     
     logger.info(f"Recovered session {latest_session_id} for user {interaction.user.name}")
 
