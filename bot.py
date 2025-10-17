@@ -144,6 +144,80 @@ class BalanceSessionView(discord.ui.View):
             'channel_id': self.ctx.channel.id
         }
         save_active_sessions()
+    
+    async def auto_recover_session(self, interaction: discord.Interaction):
+        """Automatically recover session when interaction is invalid."""
+        try:
+            # Check if there's a saved session for this channel
+            guild_id = interaction.guild.id
+            channel_id = interaction.channel.id
+            
+            # Find the most recent session for this channel
+            recent_session = None
+            for session_id, session_data in active_sessions.items():
+                if (session_data.get('guild_id') == guild_id and 
+                    session_data.get('channel_id') == channel_id):
+                    if not recent_session or session_data.get('created_at', 0) > recent_session.get('created_at', 0):
+                        recent_session = session_data
+            
+            if recent_session:
+                # Create a new session with the same data
+                embed = discord.Embed(
+                    title="🔄 Session Recovered",
+                    description="This session was restored after a bot restart. The buttons below are now functional!",
+                    color=discord.Color.green()
+                )
+                
+                participants = recent_session.get('participants', [])
+                embed.add_field(
+                    name=f"Participants ({len(participants)}/{Config.REQUIRED_PLAYERS})",
+                    value="\n".join([f"<@{p}>" for p in participants]) if participants else "*No participants*",
+                    inline=False
+                )
+                
+                if recent_session.get('teams_created'):
+                    embed.add_field(
+                        name="Status",
+                        value="✅ Teams have been created",
+                        inline=False
+                    )
+                
+                # Create new view with restored session
+                new_view = BalanceSessionView(interaction, f"{guild_id}_{channel_id}_{int(time.time())}")
+                new_view.participants = set(participants)
+                new_view.teams_created = recent_session.get('teams_created', False)
+                new_view.team_a = recent_session.get('team_a', [])
+                new_view.team_b = recent_session.get('team_b', [])
+                new_view.save_session()
+                
+                if not interaction.response.is_done():
+                    await interaction.response.send_message(embed=embed, view=new_view)
+                else:
+                    await interaction.followup.send(embed=embed, view=new_view)
+                
+                logger.info(f"Auto-recovered session for user {interaction.user.name}")
+            else:
+                # No saved session, suggest starting new one
+                if not interaction.response.is_done():
+                    await interaction.response.send_message(
+                        "⏰ **Session Expired**\n\nThis balancing session has expired. Please start a new session with `/balance`, `/start`, or `/mix`.",
+                        ephemeral=True
+                    )
+                else:
+                    await interaction.followup.send(
+                        "⏰ **Session Expired**\n\nThis balancing session has expired. Please start a new session with `/balance`, `/start`, or `/mix`.",
+                        ephemeral=True
+                    )
+        except Exception as e:
+            logger.error(f"Error in auto-recovery: {e}")
+            try:
+                if not interaction.response.is_done():
+                    await interaction.response.send_message(
+                        "⏰ **Session Expired**\n\nThis balancing session has expired. Please start a new session with `/balance`, `/start`, or `/mix`.",
+                        ephemeral=True
+                    )
+            except:
+                pass
         
     async def update_embed(self):
         """Update the session embed with current participants."""
@@ -192,11 +266,8 @@ class BalanceSessionView(discord.ui.View):
         try:
             # Check if interaction is still valid
             if not self.is_interaction_valid(interaction):
-                if not interaction.response.is_done():
-                    await interaction.response.send_message(
-                        "⏰ **Session Expired**\n\nThis balancing session has been running for too long and is no longer interactive. Please start a new session with `/balance`, `/start`, or `/mix`.",
-                        ephemeral=True
-                    )
+                # Try to recover the session automatically
+                await self.auto_recover_session(interaction)
                 return
             
             user_id = str(interaction.user.id)
@@ -249,11 +320,8 @@ class BalanceSessionView(discord.ui.View):
         try:
             # Check if interaction is still valid
             if not self.is_interaction_valid(interaction):
-                if not interaction.response.is_done():
-                    await interaction.response.send_message(
-                        "⏰ **Session Expired**\n\nThis balancing session has been running for too long and is no longer interactive. Please start a new session with `/balance`, `/start`, or `/mix`.",
-                        ephemeral=True
-                    )
+                # Try to recover the session automatically
+                await self.auto_recover_session(interaction)
                 return
             
             user_id = str(interaction.user.id)
@@ -289,11 +357,8 @@ class BalanceSessionView(discord.ui.View):
         try:
             # Check if interaction is still valid
             if not self.is_interaction_valid(interaction):
-                if not interaction.response.is_done():
-                    await interaction.response.send_message(
-                        "⏰ **Session Expired**\n\nThis balancing session has been running for too long and is no longer interactive. Please start a new session with `/balance`, `/start`, or `/mix`.",
-                        ephemeral=True
-                    )
+                # Try to recover the session automatically
+                await self.auto_recover_session(interaction)
                 return
             
             if len(self.participants) != Config.REQUIRED_PLAYERS:
@@ -333,11 +398,8 @@ class BalanceSessionView(discord.ui.View):
         try:
             # Check if interaction is still valid
             if not self.is_interaction_valid(interaction):
-                if not interaction.response.is_done():
-                    await interaction.response.send_message(
-                        "⏰ **Session Expired**\n\nThis balancing session has been running for too long and is no longer interactive. Please start a new session with `/balance`, `/start`, or `/mix`.",
-                        ephemeral=True
-                    )
+                # Try to recover the session automatically
+                await self.auto_recover_session(interaction)
                 return
             
             if not interaction.response.is_done():
@@ -619,6 +681,73 @@ async def on_ready():
         print(f'Synced {len(synced)} command(s)')
     except Exception as e:
         print(f'Failed to sync commands: {e}')
+
+
+@bot.event
+async def on_interaction_error(interaction: discord.Interaction, error: Exception):
+    """Handle interaction errors globally."""
+    logger.error(f"Interaction error: {error}")
+    
+    # Check if it's an interaction timeout/expired error
+    if "interaction" in str(error).lower() and ("failed" in str(error).lower() or "expired" in str(error).lower()):
+        try:
+            # Try to auto-recover the session
+            guild_id = interaction.guild.id
+            channel_id = interaction.channel.id
+            
+            # Find the most recent session for this channel
+            recent_session = None
+            for session_id, session_data in active_sessions.items():
+                if (session_data.get('guild_id') == guild_id and 
+                    session_data.get('channel_id') == channel_id):
+                    if not recent_session or session_data.get('created_at', 0) > recent_session.get('created_at', 0):
+                        recent_session = session_data
+            
+            if recent_session:
+                embed = discord.Embed(
+                    title="🔄 Session Recovered",
+                    description="This session was restored after a bot restart. The buttons below are now functional!",
+                    color=discord.Color.green()
+                )
+                
+                participants = recent_session.get('participants', [])
+                embed.add_field(
+                    name=f"Participants ({len(participants)}/{Config.REQUIRED_PLAYERS})",
+                    value="\n".join([f"<@{p}>" for p in participants]) if participants else "*No participants*",
+                    inline=False
+                )
+                
+                if recent_session.get('teams_created'):
+                    embed.add_field(
+                        name="Status",
+                        value="✅ Teams have been created",
+                        inline=False
+                    )
+                
+                # Create new view with restored session
+                new_view = BalanceSessionView(interaction, f"{guild_id}_{channel_id}_{int(time.time())}")
+                new_view.participants = set(participants)
+                new_view.teams_created = recent_session.get('teams_created', False)
+                new_view.team_a = recent_session.get('team_a', [])
+                new_view.team_b = recent_session.get('team_b', [])
+                new_view.save_session()
+                
+                await interaction.followup.send(embed=embed, view=new_view)
+                logger.info(f"Auto-recovered session for user {interaction.user.name} via error handler")
+            else:
+                await interaction.followup.send(
+                    "⏰ **Session Expired**\n\nThis balancing session has expired. Please start a new session with `/balance`, `/start`, or `/mix`.",
+                    ephemeral=True
+                )
+        except Exception as recovery_error:
+            logger.error(f"Error in global recovery: {recovery_error}")
+            try:
+                await interaction.followup.send(
+                    "⏰ **Session Expired**\n\nThis balancing session has expired. Please start a new session with `/balance`, `/start`, or `/mix`.",
+                    ephemeral=True
+                )
+            except:
+                pass
 
 
 @bot.tree.command(name="profile", description="Link your Discord account to your FACEIT account")
