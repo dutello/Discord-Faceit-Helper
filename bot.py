@@ -1049,76 +1049,6 @@ async def mix(interaction: discord.Interaction):
     await start_balance_session(interaction)
 
 
-@bot.tree.command(name="recover", description="Recover active sessions after bot restart")
-async def recover(interaction: discord.Interaction):
-    """Recover active sessions after bot restart."""
-    if not interaction.response.is_done():
-        await interaction.response.defer(ephemeral=True)
-    
-    # Find sessions for this guild/channel
-    recovered_sessions = []
-    for session_id, session_data in active_sessions.items():
-        if (session_data.get('guild_id') == interaction.guild.id and 
-            session_data.get('channel_id') == interaction.channel.id):
-            recovered_sessions.append((session_id, session_data))
-    
-    if not recovered_sessions:
-        await interaction.followup.send(
-            "ℹ️ No active sessions found for this channel.",
-            ephemeral=True
-        )
-        return
-    
-    # Create recovery message for the most recent session
-    latest_session_id, session_data = max(recovered_sessions, key=lambda x: x[1].get('created_at', 0))
-    
-    embed = discord.Embed(
-        title="🔄 Session Recovered",
-        description="This session was restored after a bot restart. The buttons below are now functional!",
-        color=discord.Color.green()
-    )
-    
-    participants = session_data.get('participants', [])
-    embed.add_field(
-        name=f"Participants ({len(participants)}/{Config.REQUIRED_PLAYERS})",
-        value="\n".join([f"<@{p}>" for p in participants]) if participants else "*No participants*",
-        inline=False
-    )
-    
-    if session_data.get('teams_created'):
-        embed.add_field(
-            name="Status",
-            value="✅ Teams have been created",
-            inline=False
-        )
-    
-    # Create new view with restored session
-    new_session_id = f"{interaction.guild.id}_{interaction.channel.id}_{int(time.time())}"
-    
-    # Create a mock context for the view
-    class MockContext:
-        def __init__(self, guild, channel):
-            self.guild = guild
-            self.channel = channel
-    
-    mock_ctx = MockContext(interaction.guild, interaction.channel)
-    view = BalanceSessionView(mock_ctx, new_session_id)
-    view.participants = set(participants)
-    view.teams_created = session_data.get('teams_created', False)
-    view.team_a = session_data.get('team_a', [])
-    view.team_b = session_data.get('team_b', [])
-    view.save_session()
-    
-    view.message = await interaction.followup.send(embed=embed, view=view)
-    
-    # Remove the old session
-    if latest_session_id in active_sessions:
-        del active_sessions[latest_session_id]
-        save_active_sessions()
-    
-    logger.info(f"Recovered session {latest_session_id} for user {interaction.user.name}")
-
-
 @bot.tree.command(name="clear_sessions", description="Clear all active sessions (admin only)")
 async def clear_sessions(interaction: discord.Interaction):
     """Clear all active sessions."""
@@ -1169,11 +1099,6 @@ async def help_command(interaction: discord.Interaction):
     embed.add_field(
         name="/balance, /start, /mix",
         value="Start a team balancing session (needs 10 players)",
-        inline=False
-    )
-    embed.add_field(
-        name="/recover",
-        value="Recover active sessions after bot restart",
         inline=False
     )
     
