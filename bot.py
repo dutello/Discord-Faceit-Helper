@@ -58,7 +58,7 @@ class BalanceSessionView(discord.ui.View):
     """Interactive view for team balancing session."""
     
     def __init__(self, ctx):
-        super().__init__(timeout=300)  # 5 minute timeout
+        super().__init__(timeout=1800)  # 30 minute timeout
         self.ctx = ctx
         self.participants = set()
         self.message = None
@@ -96,77 +96,140 @@ class BalanceSessionView(discord.ui.View):
     @discord.ui.button(label="Join Session", style=discord.ButtonStyle.primary, emoji="✋")
     async def join_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Handle join button click."""
-        user_id = str(interaction.user.id)
-        
-        # Check if user is linked to FACEIT
-        if not db.is_user_linked(user_id):
-            await interaction.response.send_message(
-                "❌ You need to link your FACEIT account first! Use `/profile <faceit_username>`",
-                ephemeral=True
-            )
-            return
-        
-        if user_id in self.participants:
-            await interaction.response.send_message(
-                "ℹ️ You're already in the session!",
-                ephemeral=True
-            )
-            return
-        
-        if len(self.participants) >= Config.REQUIRED_PLAYERS:
-            await interaction.response.send_message(
-                "❌ Session is full!",
-                ephemeral=True
-            )
-            return
-        
-        self.participants.add(user_id)
-        await interaction.response.defer()
-        await self.update_embed()
+        try:
+            user_id = str(interaction.user.id)
+            
+            # Check if user is linked to FACEIT
+            if not db.is_user_linked(user_id):
+                if not interaction.response.is_done():
+                    await interaction.response.send_message(
+                        "❌ You need to link your FACEIT account first! Use `/profile <faceit_username>`",
+                        ephemeral=True
+                    )
+                return
+            
+            if user_id in self.participants:
+                if not interaction.response.is_done():
+                    await interaction.response.send_message(
+                        "ℹ️ You're already in the session!",
+                        ephemeral=True
+                    )
+                return
+            
+            if len(self.participants) >= Config.REQUIRED_PLAYERS:
+                if not interaction.response.is_done():
+                    await interaction.response.send_message(
+                        "❌ Session is full!",
+                        ephemeral=True
+                    )
+                return
+            
+            self.participants.add(user_id)
+            if not interaction.response.is_done():
+                await interaction.response.defer()
+            await self.update_embed()
+        except Exception as e:
+            print(f"Error in join button: {e}")
+            try:
+                if not interaction.response.is_done():
+                    await interaction.response.send_message("❌ Session expired. Please start a new session.", ephemeral=True)
+            except:
+                pass
     
     @discord.ui.button(label="Leave Session", style=discord.ButtonStyle.secondary, emoji="👋")
     async def leave_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Handle leave button click."""
-        user_id = str(interaction.user.id)
-        
-        if user_id not in self.participants:
-            await interaction.response.send_message(
-                "ℹ️ You're not in the session!",
-                ephemeral=True
-            )
-            return
-        
-        self.participants.remove(user_id)
-        await interaction.response.defer()
-        await self.update_embed()
+        try:
+            user_id = str(interaction.user.id)
+            
+            if user_id not in self.participants:
+                if not interaction.response.is_done():
+                    await interaction.response.send_message(
+                        "ℹ️ You're not in the session!",
+                        ephemeral=True
+                    )
+                return
+            
+            self.participants.remove(user_id)
+            if not interaction.response.is_done():
+                await interaction.response.defer()
+            await self.update_embed()
+        except Exception as e:
+            print(f"Error in leave button: {e}")
+            try:
+                if not interaction.response.is_done():
+                    await interaction.response.send_message("❌ Session expired. Please start a new session.", ephemeral=True)
+            except:
+                pass
     
     @discord.ui.button(label="Start Balancing", style=discord.ButtonStyle.success, emoji="⚖️")
     async def balance_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Handle balance button click."""
-        if len(self.participants) != Config.REQUIRED_PLAYERS:
-            await interaction.response.send_message(
-                f"❌ Need exactly {Config.REQUIRED_PLAYERS} players! Currently have {len(self.participants)}.",
-                ephemeral=True
-            )
-            return
-        
-        if self.teams_created:
-            await interaction.response.send_message(
-                "ℹ️ Teams have already been created!",
-                ephemeral=True
-            )
-            return
-        
-        await interaction.response.defer()
-        await self.create_balanced_teams()
+        try:
+            if len(self.participants) != Config.REQUIRED_PLAYERS:
+                if not interaction.response.is_done():
+                    await interaction.response.send_message(
+                        f"❌ Need exactly {Config.REQUIRED_PLAYERS} players! Currently have {len(self.participants)}.",
+                        ephemeral=True
+                    )
+                return
+            
+            if self.teams_created:
+                if not interaction.response.is_done():
+                    await interaction.response.send_message(
+                        "ℹ️ Teams have already been created!",
+                        ephemeral=True
+                    )
+                return
+            
+            if not interaction.response.is_done():
+                await interaction.response.defer()
+            await self.create_balanced_teams()
+        except Exception as e:
+            print(f"Error in balance button: {e}")
+            try:
+                if not interaction.response.is_done():
+                    await interaction.response.send_message("❌ Session expired. Please start a new session.", ephemeral=True)
+            except:
+                pass
     
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.danger, emoji="❌")
     async def cancel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Handle cancel button click."""
-        await interaction.response.send_message("Session cancelled!", ephemeral=True)
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.send_message("Session cancelled!", ephemeral=True)
+            else:
+                await interaction.followup.send("Session cancelled!", ephemeral=True)
+        except discord.errors.InteractionResponded:
+            await interaction.followup.send("Session cancelled!", ephemeral=True)
+        except Exception as e:
+            print(f"Error in cancel button: {e}")
+            # Try to send a followup message
+            try:
+                await interaction.followup.send("Session cancelled!", ephemeral=True)
+            except:
+                pass
+        
         self.stop()
         if self.message:
-            await self.message.delete()
+            try:
+                await self.message.delete()
+            except:
+                pass
+    
+    async def on_timeout(self):
+        """Handle view timeout."""
+        try:
+            if self.message:
+                embed = discord.Embed(
+                    title="⏰ Session Expired",
+                    description="This balancing session has expired. Please start a new one with `/balance`, `/start`, or `/mix`.",
+                    color=discord.Color.red()
+                )
+                await self.message.edit(embed=embed, view=None)
+        except:
+            pass
     
     async def create_balanced_teams(self):
         """Fetch ELOs and create balanced teams."""
